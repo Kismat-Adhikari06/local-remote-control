@@ -1,0 +1,433 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="UTF-8" />
+    <meta name="viewport" content="width=device-width, initial-scale=1.0" />
+    <title>Remote Control App — Idea & Tech Stack</title>
+    <link rel="preconnect" href="https://fonts.googleapis.com" />
+    <link href="https://fonts.googleapis.com/css2?family=Inter:wght@400;500;600;700;800&display=swap" rel="stylesheet" />
+    <style>
+        * { margin: 0; padding: 0; box-sizing: border-box; }
+
+        body {
+            font-family: 'Inter', -apple-system, BlinkMacSystemFont, sans-serif;
+            background: #0f0f13;
+            color: #e8e8ed;
+            line-height: 1.7;
+            padding: 2rem 1rem;
+        }
+
+        .container {
+            max-width: 880px;
+            margin: 0 auto;
+        }
+
+        /* ── Header ── */
+        header {
+            text-align: center;
+            padding: 3rem 0 2rem;
+        }
+
+        header .icon {
+            font-size: 3.5rem;
+            margin-bottom: 0.75rem;
+            display: block;
+        }
+
+        header h1 {
+            font-size: 2.4rem;
+            font-weight: 800;
+            letter-spacing: -0.02em;
+            background: linear-gradient(135deg, #f0c27f 0%, #fc5c7d 100%);
+            -webkit-background-clip: text;
+            -webkit-text-fill-color: transparent;
+            background-clip: text;
+        }
+
+        header p {
+            color: #888;
+            font-size: 1.05rem;
+            margin-top: 0.5rem;
+        }
+
+        /* ── Cards ── */
+        .card {
+            background: #1a1a22;
+            border: 1px solid #2a2a35;
+            border-radius: 16px;
+            padding: 1.75rem 2rem;
+            margin-bottom: 1.5rem;
+            transition: border-color 0.2s;
+        }
+
+        .card:hover {
+            border-color: #3a3a4a;
+        }
+
+        .card h2 {
+            font-size: 1.3rem;
+            font-weight: 700;
+            margin-bottom: 1rem;
+            display: flex;
+            align-items: center;
+            gap: 0.5rem;
+        }
+
+        .card h2 .badge {
+            font-size: 0.7rem;
+            font-weight: 600;
+            background: #2a2a35;
+            color: #aaa;
+            padding: 0.15rem 0.6rem;
+            border-radius: 6px;
+            letter-spacing: 0.03em;
+        }
+
+        .card ul {
+            list-style: none;
+            padding: 0;
+        }
+
+        .card ul li {
+            padding: 0.35rem 0;
+            padding-left: 1.4rem;
+            position: relative;
+            color: #ccc;
+        }
+
+        .card ul li::before {
+            content: "▸";
+            position: absolute;
+            left: 0;
+            color: #fc5c7d;
+            font-weight: 600;
+        }
+
+        .tag {
+            display: inline-block;
+            font-size: 0.75rem;
+            font-weight: 600;
+            padding: 0.2rem 0.7rem;
+            border-radius: 6px;
+            margin: 0.15rem 0.2rem;
+        }
+
+        .tag-python { background: #3572A533; color: #ffd343; }
+        .tag-flutter { background: #02569B33; color: #54C5F8; }
+        .tag-ws { background: #4a154b33; color: #e06c75; }
+        .tag-net { background: #0d737733; color: #56b6c2; }
+
+        .tag-green { background: #1b433233; color: #95d5b2; }
+        .tag-orange { background: #7b4a1233; color: #f0c27f; }
+        .tag-blue { background: #1a3a5c33; color: #7ec8e3; }
+        .tag-purple { background: #3b1f5e33; color: #c9a0ff; }
+
+        /* ── Architecture Diagram ── */
+        .arch-grid {
+            display: grid;
+            grid-template-columns: 1fr auto 1fr;
+            gap: 1rem;
+            align-items: center;
+            margin: 0.5rem 0;
+        }
+
+        .arch-box {
+            background: #12121b;
+            border: 1px solid #2a2a35;
+            border-radius: 12px;
+            padding: 1.25rem 1rem;
+            text-align: center;
+        }
+
+        .arch-box .label {
+            font-size: 0.75rem;
+            text-transform: uppercase;
+            letter-spacing: 0.05em;
+            color: #888;
+        }
+
+        .arch-box .title {
+            font-weight: 700;
+            font-size: 1.1rem;
+            margin: 0.3rem 0;
+        }
+
+        .arch-box .sub {
+            font-size: 0.85rem;
+            color: #999;
+        }
+
+        .arch-arrow {
+            text-align: center;
+            font-size: 1.6rem;
+            color: #555;
+        }
+
+        .arch-note {
+            text-align: center;
+            font-size: 0.8rem;
+            color: #777;
+            margin-top: 0.5rem;
+        }
+
+        /* ── Protocol Table ── */
+        .proto-table {
+            width: 100%;
+            border-collapse: collapse;
+            font-size: 0.85rem;
+            margin-top: 0.75rem;
+        }
+
+        .proto-table th {
+            text-align: left;
+            color: #999;
+            font-weight: 600;
+            font-size: 0.75rem;
+            text-transform: uppercase;
+            letter-spacing: 0.04em;
+            padding: 0.5rem 0.75rem;
+            border-bottom: 1px solid #2a2a35;
+        }
+
+        .proto-table td {
+            padding: 0.5rem 0.75rem;
+            border-bottom: 1px solid #222;
+            color: #ccc;
+            font-family: 'SF Mono', 'Cascadia Code', 'JetBrains Mono', monospace;
+            font-size: 0.8rem;
+        }
+
+        .proto-table td:first-child { color: #f0c27f; }
+        .proto-table td:nth-child(2) { color: #7ec8e3; }
+
+        /* ── Plan Steps ── */
+        .step {
+            display: flex;
+            gap: 1rem;
+            padding: 0.75rem 0;
+            border-bottom: 1px solid #1e1e28;
+        }
+
+        .step:last-child { border-bottom: none; }
+
+        .step-num {
+            flex-shrink: 0;
+            width: 28px;
+            height: 28px;
+            border-radius: 8px;
+            background: #2a2a35;
+            display: flex;
+            align-items: center;
+            justify-content: center;
+            font-weight: 700;
+            font-size: 0.8rem;
+            color: #f0c27f;
+        }
+
+        .step-content h3 {
+            font-size: 0.95rem;
+            font-weight: 600;
+            margin-bottom: 0.15rem;
+        }
+
+        .step-content p {
+            font-size: 0.85rem;
+            color: #999;
+        }
+
+        /* ── Footer ── */
+        footer {
+            text-align: center;
+            padding: 2rem 0 1rem;
+            color: #555;
+            font-size: 0.8rem;
+        }
+
+        /* ── Responsive ── */
+        @media (max-width: 600px) {
+            header h1 { font-size: 1.7rem; }
+            .card { padding: 1.25rem; }
+            .arch-grid { grid-template-columns: 1fr; gap: 0.5rem; }
+            .arch-arrow { transform: rotate(90deg); }
+            .proto-table { font-size: 0.75rem; }
+        }
+    </style>
+</head>
+<body>
+    <div class="container">
+
+        <!-- ─── HEADER ─── -->
+        <header>
+            <span class="icon">🖱️⌨️</span>
+            <h1>Remote Control App</h1>
+            <p>Control your laptop's mouse & keyboard from your Android phone over WiFi — no browser needed on the phone.</p>
+        </header>
+
+        <!-- ─── WHAT IT DOES ─── -->
+        <div class="card">
+            <h2>🎯 What It Does</h2>
+            <ul>
+                <li><strong>Mouse control</strong> — touchpad-style cursor movement, left/right click, scroll</li>
+                <li><strong>Keyboard input</strong> — type text, send hotkeys (Ctrl+C, Alt+Tab, etc.)</li>
+                <li><strong>Works over WiFi</strong> — both devices on the same local network, zero internet dependency</li>
+                <li><strong>Native Android app</strong> — no browser, no web view gimmicks. A real installed APK.</li>
+                <li><strong>Lightweight desktop server</strong> — minimal footprint, runs in the background</li>
+            </ul>
+        </div>
+
+        <!-- ─── ARCHITECTURE ─── -->
+        <div class="card">
+            <h2>🏗️ Architecture</h2>
+            <div class="arch-grid">
+                <div class="arch-box">
+                    <div class="label">Phone</div>
+                    <div class="title">📱 Android App</div>
+                    <div class="sub">Flutter (Dart)</div>
+                </div>
+                <div class="arch-arrow">⟷</div>
+                <div class="arch-box">
+                    <div class="label">Laptop / Desktop</div>
+                    <div class="title">💻 Server</div>
+                    <div class="sub">Python</div>
+                </div>
+            </div>
+            <div class="arch-note">WebSocket communication over WiFi (TCP, port 8765)</div>
+
+            <div style="margin-top: 1.25rem; display: flex; flex-wrap: wrap; gap: 0.75rem; justify-content: center;">
+                <span class="tag tag-python">🐍 Python 3.11+</span>
+                <span class="tag tag-flutter">🦋 Flutter 3.x</span>
+                <span class="tag tag-ws">🔗 WebSockets</span>
+                <span class="tag tag-net">🌐 Local WiFi</span>
+            </div>
+        </div>
+
+        <!-- ─── TECH STACK ─── -->
+        <div class="card">
+            <h2>⚙️ Tech Stack — Detailed</h2>
+
+            <h3 style="font-size: 1rem; font-weight: 600; margin: 1rem 0 0.5rem; color: #f0c27f;">🖥️ Desktop Server (Python)</h3>
+            <ul>
+                <li><strong>Python 3.11+</strong> — lightweight, ships with most systems, no heavy runtime</li>
+                <li><strong><code>websockets</code></strong> — async WebSocket server for real-time communication</li>
+                <li><strong><code>pyautogui</code></strong> — cross-platform mouse & keyboard emulation</li>
+                <li><strong><code>asyncio</code></strong> — native async event loop, handles multiple clients</li>
+                <li><strong><code>qrcode</code> + <code>Pillow</code></strong> — generate a QR code with the server's IP for easy phone connection</li>
+                <li><strong>Packaging:</strong> PyInstaller → single `.exe` / binary, no Python install needed</li>
+            </ul>
+
+            <h3 style="font-size: 1rem; font-weight: 600; margin: 1.5rem 0 0.5rem; color: #54C5F8;">📱 Android App (Flutter)</h3>
+            <ul>
+                <li><strong>Flutter 3.x (Dart)</strong> — compiles to native ARM code, no JVM/Android bloat</li>
+                <li><strong><code>web_socket_channel</code></strong> — WebSocket client for Flutter</li>
+                <li><strong>Custom touchpad widget</strong> — gesture detector for pan (move), tap (click), long-press (right-click), pinch (scroll)</li>
+                <li><strong>Keyboard input overlay</strong> — custom text field + hotkey buttons</li>
+                <li><strong>Connection screen</strong> — scan QR code or type IP manually</li>
+                <li><strong>Packaging:</strong> `flutter build apk` → installable APK, or AAB for Play Store</li>
+            </ul>
+        </div>
+
+        <!-- ─── COMMUNICATION PROTOCOL ─── -->
+        <div class="card">
+            <h2>📡 Communication Protocol</h2>
+            <p style="color: #999; font-size: 0.9rem; margin-bottom: 0.75rem;">All messages are JSON over WebSocket. Lightweight, human-readable, easy to debug.</p>
+            <table class="proto-table">
+                <thead>
+                    <tr><th>Message Type</th><th>Payload</th><th>Description</th></tr>
+                </thead>
+                <tbody>
+                    <tr><td><code>mouse_move</code></td><td><code>{ "dx": 50, "dy": 30 }</code></td><td>Relative cursor movement (touchpad-style)</td></tr>
+                    <tr><td><code>mouse_click</code></td><td><code>{ "button": "left" }</code></td><td>Click a mouse button</td></tr>
+                    <tr><td><code>mouse_scroll</code></td><td><code>{ "clicks": -3 }</code></td><td>Scroll up/down (negative = down)</td></tr>
+                    <tr><td><code>key_press</code></td><td><code>{ "key": "enter" }</code></td><td>Press & release a key</td></tr>
+                    <tr><td><code>key_type</code></td><td><code>{ "text": "Hello!" }</code></td><td>Type a string of text</td></tr>
+                    <tr><td><code>hotkey</code></td><td><code>{ "keys": ["ctrl", "c"] }</code></td><td>Send a keyboard shortcut</td></tr>
+                    <tr><td><code>ping</code></td><td><code>{}</code></td><td>Keep-alive / latency check</td></tr>
+                </tbody>
+            </table>
+        </div>
+
+        <!-- ─── PLAN ─── -->
+        <div class="card">
+            <h2>📋 Implementation Plan</h2>
+
+            <div class="step">
+                <div class="step-num">1</div>
+                <div class="step-content">
+                    <h3>Desktop Server — Core</h3>
+                    <p>Python WebSocket server with pyautogui bindings. Handle mouse move, click, scroll, key press, hotkeys.</p>
+                </div>
+            </div>
+
+            <div class="step">
+                <div class="step-num">2</div>
+                <div class="step-content">
+                    <h3>Desktop Server — Extras</h3>
+                    <p>Auto-detect local IP, generate QR code, show simple GUI (CLI or system tray), graceful shutdown.</p>
+                </div>
+            </div>
+
+            <div class="step">
+                <div class="step-num">3</div>
+                <div class="step-content">
+                    <h3>Android App — Connection</h3>
+                    <p>Flutter app with QR scanner + manual IP entry. Connect to the server via WebSocket.</p>
+                </div>
+            </div>
+
+            <div class="step">
+                <div class="step-num">4</div>
+                <div class="step-content">
+                    <h3>Android App — Touchpad & Keyboard</h3>
+                    <p>Custom touchpad widget (move, click, scroll) + keyboard input + hotkey buttons + haptic feedback.</p>
+                </div>
+            </div>
+
+            <div class="step">
+                <div class="step-num">5</div>
+                <div class="step-content">
+                    <h3>Integration & Polish</h3>
+                    <p>Error handling, reconnection logic, latency display, UI polish, dark theme, vibration on tap.</p>
+                </div>
+            </div>
+
+            <div class="step">
+                <div class="step-num">6</div>
+                <div class="step-content">
+                    <h3>Package & Ship</h3>
+                    <p>PyInstaller → single .exe for desktop; flutter build apk → Android APK.</p>
+                </div>
+            </div>
+        </div>
+
+        <!-- ─── WHY THIS STACK ─── -->
+        <div class="card">
+            <h2>🤔 Why This Stack?</h2>
+            <ul>
+                <li><strong>Python (not Kotlin/Java)</strong> — lightweight runtime, no JVM overhead, the server is just a script. Can be bundled into a 10 MB .exe.</li>
+                <li><strong>Flutter (not Kotlin)</strong> — compiles directly to native ARM code, <em>no</em> Android framework bloat. Dart is way lighter than Kotlin. One codebase for future iOS support too.</li>
+                <li><strong>WebSockets (not HTTP polling)</strong> — real-time bidirectional, low latency, persistent connection. Perfect for mouse movement (which needs ~60 updates/sec).</li>
+                <li><strong>No browser</strong> — the Flutter app is a native Android app. It does not open a browser, does not need a web view. It's a real installed app with its own icon.</li>
+                <li><strong>No cloud / no internet</strong> — everything runs on your local WiFi. Zero latency outside your network, zero privacy concerns.</li>
+            </ul>
+        </div>
+
+        <!-- ─── ALTERNATIVES CONSIDERED ─── -->
+        <div class="card">
+            <h2>🔄 Alternatives Considered</h2>
+            <ul>
+                <li><strong>Electron (Desktop)</strong> — way too heavy (bundles entire Chromium). Python server is ~10 MB vs Electron's ~150 MB.</li>
+                <li><strong>Kotlin/Android Native (Phone)</strong> — heavy Android SDK, more boilerplate, slower to prototype. Flutter is faster to build and lighter at runtime.</li>
+                <li><strong>React Native (Phone)</strong> — JavaScript bridge adds latency. Flutter compiles to native code = smoother touchpad experience.</li>
+                <li><strong>PWA / Web App (Phone)</strong> — you said no browser. A PWA still runs in the browser, can't access system-level features properly.</li>
+                <li><strong>Rust / Go (Desktop)</strong> — overkill for this project. Python has the best ecosystem for mouse/keyboard automation out of the box.</li>
+            </ul>
+        </div>
+
+        <!-- ─── FOOTER ─── -->
+        <footer>
+            Idea doc · Created with Buffy · May 2026
+        </footer>
+
+    </div>
+</body>
+</html>

@@ -1,0 +1,682 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="UTF-8" />
+    <meta name="viewport" content="width=device-width, initial-scale=1.0, user-scalable=no" />
+    <title>Remote Control</title>
+    <style>
+        * { margin: 0; padding: 0; box-sizing: border-box; -webkit-tap-highlight-color: transparent; }
+
+        body {
+            font-family: -apple-system, BlinkMacSystemFont, 'Segoe UI', Roboto, sans-serif;
+            background: #111;
+            color: #eee;
+            height: 100dvh;
+            overflow: hidden;
+            touch-action: none;
+            user-select: none;
+        }
+
+        .container {
+            display: flex;
+            flex-direction: column;
+            height: 100dvh;
+            max-width: 500px;
+            margin: 0 auto;
+            padding: 8px 10px;
+        }
+
+        /* ── Header ── */
+        .header {
+            display: flex;
+            align-items: center;
+            justify-content: space-between;
+            padding: 6px 4px 8px;
+            flex-shrink: 0;
+        }
+
+        .header h1 {
+            font-size: 1.05rem;
+            font-weight: 700;
+            letter-spacing: -0.02em;
+        }
+
+        .status {
+            display: flex;
+            align-items: center;
+            gap: 6px;
+            font-size: 0.75rem;
+            font-weight: 600;
+            padding: 4px 12px;
+            border-radius: 20px;
+            background: #1a1a22;
+            border: 1px solid #2a2a35;
+        }
+
+        .status-dot {
+            width: 8px; height: 8px;
+            border-radius: 50%;
+            background: #555;
+            transition: background 0.3s;
+        }
+
+        .status-dot.connected { background: #34d399; box-shadow: 0 0 6px #34d39966; }
+        .status-dot.disconnected { background: #ef4444; box-shadow: 0 0 6px #ef444466; }
+
+        /* ── Touchpad ── */
+        .touchpad-wrapper {
+            flex: 1;
+            min-height: 0;
+            padding: 4px 0;
+        }
+
+        .touchpad {
+            width: 100%;
+            height: 100%;
+            background: #1a1a24;
+            border: 1px solid #2a2a38;
+            border-radius: 16px;
+            position: relative;
+            overflow: hidden;
+            touch-action: none;
+            cursor: crosshair;
+        }
+
+        .touchpad .hint {
+            position: absolute;
+            inset: 0;
+            display: flex;
+            align-items: center;
+            justify-content: center;
+            font-size: 0.85rem;
+            color: #444;
+            pointer-events: none;
+            transition: opacity 0.3s;
+            flex-direction: column;
+            gap: 4px;
+        }
+
+        .touchpad .hint span { font-size: 1.6rem; }
+
+        .touchpad.active .hint { opacity: 0; }
+
+        .touchpad .cursor-dot {
+            position: absolute;
+            width: 12px; height: 12px;
+            background: #f0c27f;
+            border-radius: 50%;
+            opacity: 0;
+            transform: translate(-50%, -50%);
+            pointer-events: none;
+            transition: opacity 0.15s;
+            box-shadow: 0 0 10px #f0c27f55;
+        }
+
+        .touchpad.active .cursor-dot { opacity: 1; }
+
+        /* ── Button Row ── */
+        .btn-row {
+            display: flex;
+            gap: 6px;
+            padding: 6px 0;
+            flex-shrink: 0;
+        }
+
+        .btn-row .btn {
+            flex: 1;
+            padding: 10px 0;
+            border: none;
+            border-radius: 10px;
+            font-size: 0.78rem;
+            font-weight: 600;
+            background: #1e1e2a;
+            color: #ccc;
+            cursor: pointer;
+            transition: all 0.1s;
+            touch-action: manipulation;
+        }
+
+        .btn-row .btn:active { background: #2e2e3e; transform: scale(0.96); }
+        .btn-row .btn.primary { background: #f0c27f22; color: #f0c27f; border: 1px solid #f0c27f33; }
+        .btn-row .btn.primary:active { background: #f0c27f44; }
+        .btn-row .btn.danger { background: #ef444422; color: #ef4444; border: 1px solid #ef444433; }
+        .btn-row .btn.danger:active { background: #ef444444; }
+
+        /* ── Scroll Bar ── */
+        .scroll-row {
+            display: flex;
+            gap: 6px;
+            flex-shrink: 0;
+            padding: 2px 0 4px;
+        }
+
+        .scroll-btn {
+            flex: 1;
+            padding: 8px 0;
+            border: none;
+            border-radius: 8px;
+            font-size: 0.9rem;
+            background: #1e1e2a;
+            color: #aaa;
+            cursor: pointer;
+            transition: all 0.1s;
+            touch-action: manipulation;
+        }
+
+        .scroll-btn:active { background: #2e2e3e; transform: scale(0.97); }
+
+        /* ── Keyboard ── */
+        .kb-row {
+            display: flex;
+            gap: 6px;
+            flex-shrink: 0;
+            padding: 4px 0 2px;
+        }
+
+        .kb-input-wrap {
+            flex: 1;
+            position: relative;
+        }
+
+        .kb-input-wrap input {
+            width: 100%;
+            height: 100%;
+            padding: 10px 12px;
+            border: 1px solid #2a2a38;
+            border-radius: 10px;
+            background: #1a1a24;
+            color: #eee;
+            font-size: 0.9rem;
+            outline: none;
+            touch-action: manipulation;
+        }
+
+        .kb-input-wrap input:focus {
+            border-color: #f0c27f55;
+        }
+
+        .kb-input-wrap input::placeholder { color: #555; }
+
+        .kb-send {
+            padding: 10px 16px;
+            border: none;
+            border-radius: 10px;
+            background: #f0c27f;
+            color: #111;
+            font-weight: 700;
+            font-size: 0.85rem;
+            cursor: pointer;
+            transition: all 0.1s;
+            touch-action: manipulation;
+            flex-shrink: 0;
+        }
+
+        .kb-send:active { transform: scale(0.95); opacity: 0.8; }
+
+        /* ── Hotkey Chips ── */
+        .hotkeys {
+            display: flex;
+            gap: 5px;
+            flex-wrap: wrap;
+            flex-shrink: 0;
+            padding: 4px 0 6px;
+            justify-content: center;
+        }
+
+        .hotkey {
+            padding: 6px 12px;
+            border: 1px solid #2a2a38;
+            border-radius: 8px;
+            background: #1a1a24;
+            color: #aaa;
+            font-size: 0.7rem;
+            font-weight: 600;
+            cursor: pointer;
+            transition: all 0.1s;
+            touch-action: manipulation;
+            font-family: 'SF Mono', 'Cascadia Code', monospace;
+        }
+
+        .hotkey:active { background: #2e2e3e; transform: scale(0.95); color: #f0c27f; }
+
+        /* ── Connection overlay ── */
+        .overlay {
+            position: fixed;
+            inset: 0;
+            background: #0a0a0e;
+            display: flex;
+            align-items: center;
+            justify-content: center;
+            z-index: 100;
+            transition: opacity 0.4s, visibility 0.4s;
+        }
+
+        .overlay.hidden {
+            opacity: 0;
+            visibility: hidden;
+            pointer-events: none;
+        }
+
+        .overlay-box {
+            text-align: center;
+            padding: 2rem;
+            max-width: 360px;
+        }
+
+        .overlay-box .icon { font-size: 3rem; margin-bottom: 0.5rem; }
+
+        .overlay-box h2 {
+            font-size: 1.3rem;
+            font-weight: 700;
+            margin-bottom: 0.3rem;
+        }
+
+        .overlay-box p {
+            color: #888;
+            font-size: 0.85rem;
+            margin-bottom: 1.5rem;
+        }
+
+        .overlay-box .ip-display {
+            font-size: 1.2rem;
+            font-weight: 700;
+            color: #f0c27f;
+            font-family: 'SF Mono', 'Cascadia Code', monospace;
+            background: #1a1a24;
+            padding: 10px 20px;
+            border-radius: 10px;
+            border: 1px solid #2a2a38;
+            margin-bottom: 1rem;
+        }
+
+        .overlay-box .sub-text {
+            font-size: 0.75rem;
+            color: #555;
+        }
+
+        .connecting-spinner {
+            display: inline-block;
+            width: 20px; height: 20px;
+            border: 2px solid #2a2a38;
+            border-top-color: #f0c27f;
+            border-radius: 50%;
+            animation: spin 0.8s linear infinite;
+            margin-right: 8px;
+            vertical-align: middle;
+        }
+
+        @keyframes spin { to { transform: rotate(360deg); } }
+
+        .error-msg {
+            color: #ef4444;
+            font-size: 0.8rem;
+            margin-top: 0.5rem;
+        }
+
+        /* ── Coords ── */
+        .coords {
+            text-align: center;
+            font-size: 0.65rem;
+            color: #444;
+            padding: 2px 0 4px;
+            flex-shrink: 0;
+            font-family: 'SF Mono', monospace;
+        }
+    </style>
+</head>
+<body>
+
+    <!-- ─── Connection Overlay ─── -->
+    <div class="overlay" id="overlay">
+        <div class="overlay-box">
+            <div class="icon">🖱️</div>
+            <h2>Remote Control</h2>
+            <p>Connecting to your laptop...</p>
+            <div class="ip-display" id="ipDisplay">ws://---.---.---.---:8765</div>
+            <div><span class="connecting-spinner" id="spinner"></span><span id="statusText">Connecting...</span></div>
+            <div class="error-msg" id="errorMsg"></div>
+            <div class="sub-text" style="margin-top:1rem;">Make sure the server is running on your laptop</div>
+        </div>
+    </div>
+
+    <!-- ─── Main UI ─── -->
+    <div class="container">
+        <div class="header">
+            <h1>🖱️ Remote</h1>
+            <div class="status" id="status">
+                <span class="status-dot disconnected" id="statusDot"></span>
+                <span id="statusLabel">Disconnected</span>
+            </div>
+        </div>
+
+        <!-- Touchpad -->
+        <div class="touchpad-wrapper">
+            <div class="touchpad" id="touchpad">
+                <div class="hint">
+                    <span>👆</span>
+                    Drag to move · Tap to click
+                </div>
+                <div class="cursor-dot" id="cursorDot"></div>
+            </div>
+        </div>
+
+        <!-- Coordinates -->
+        <div class="coords" id="coords">Cursor: ---, ---</div>
+
+        <!-- Click Buttons -->
+        <div class="btn-row">
+            <button class="btn primary" id="btnLeft">🖱 Left</button>
+            <button class="btn" id="btnRight">Right</button>
+            <button class="btn" id="btnDouble">Double</button>
+            <button class="btn danger" id="btnDrag">Drag</button>
+        </div>
+
+        <!-- Scroll -->
+        <div class="scroll-row">
+            <button class="scroll-btn" id="scrollUp">⬆ Scroll Up</button>
+            <button class="scroll-btn" id="scrollDown">⬇ Scroll Down</button>
+        </div>
+
+        <!-- Keyboard Input -->
+        <div class="kb-row">
+            <div class="kb-input-wrap">
+                <input type="text" id="kbInput" placeholder="Type something..." autocomplete="off" />
+            </div>
+            <button class="kb-send" id="kbSend">Send</button>
+        </div>
+
+        <!-- Hotkeys -->
+        <div class="hotkeys">
+            <span class="hotkey" data-keys='["ctrl","c"]'>Ctrl+C</span>
+            <span class="hotkey" data-keys='["ctrl","v"]'>Ctrl+V</span>
+            <span class="hotkey" data-keys='["alt","tab"]'>Alt+Tab</span>
+            <span class="hotkey" data-keys='["ctrl","shift","esc"]'>Ctrl+Shift+Esc</span>
+            <span class="hotkey" data-keys='["win","d"]'>Win+D</span>
+            <span class="hotkey" data-keys='["escape"]'>Esc</span>
+            <span class="hotkey" data-keys='["enter"]'>Enter</span>
+            <span class="hotkey" data-keys='["backspace"]'>⌫ Bksp</span>
+        </div>
+    </div>
+
+    <script>
+        // ─── WebSocket Connection ───
+        const WS_PORT = 8765;
+        const host = location.hostname;
+        const wsUrl = `ws://${host}:${WS_PORT}/ws`;
+
+        let ws = null;
+        let connected = false;
+
+        const overlay = document.getElementById('overlay');
+        const ipDisplay = document.getElementById('ipDisplay');
+        const statusText = document.getElementById('statusText');
+        const spinner = document.getElementById('spinner');
+        const errorMsg = document.getElementById('errorMsg');
+        const statusDot = document.getElementById('statusDot');
+        const statusLabel = document.getElementById('statusLabel');
+
+        ipDisplay.textContent = wsUrl;
+
+        function updateStatus(ok) {
+            connected = ok;
+            statusDot.className = 'status-dot ' + (ok ? 'connected' : 'disconnected');
+            statusLabel.textContent = ok ? 'Connected' : 'Disconnected';
+            if (ok) {
+                overlay.classList.add('hidden');
+            }
+        }
+
+        function connect() {
+            if (ws) { try { ws.close(); } catch(e) {} }
+
+            statusText.innerHTML = '<span class="connecting-spinner"></span> Connecting...';
+            errorMsg.textContent = '';
+
+            ws = new WebSocket(wsUrl);
+
+            ws.onopen = () => {
+                statusText.textContent = '✅ Connected!';
+                updateStatus(true);
+                // Get screen size
+                ws.send(JSON.stringify({ type: 'get_screen_size' }));
+            };
+
+            ws.onmessage = (e) => {
+                try {
+                    const msg = JSON.parse(e.data);
+                    if (msg.type === 'screen_size') {
+                        document.getElementById('coords').textContent =
+                            `Screen: ${msg.width}×${msg.height}`;
+                    }
+                } catch(_) {}
+            };
+
+            ws.onclose = () => {
+                updateStatus(false);
+                overlay.classList.remove('hidden');
+                statusText.innerHTML = '❌ Disconnected. Retrying...';
+                setTimeout(connect, 2000);
+            };
+
+            ws.onerror = () => {
+                errorMsg.textContent = 'Could not connect. Is the server running?';
+            };
+        }
+
+        connect();
+
+        // ─── Send helper ───
+        function send(data) {
+            if (ws && ws.readyState === WebSocket.OPEN) {
+                ws.send(JSON.stringify(data));
+            }
+        }
+
+        // ─── Touchpad ───
+        const tp = document.getElementById('touchpad');
+        const cursorDot = document.getElementById('cursorDot');
+        let lastTouchX = 0, lastTouchY = 0;
+        let hasMoved = false;
+        let touches = {};
+        let activeFingers = 0;
+        let touchStarted = false;
+        let prevPinchDist = 0;
+
+        // Show cursor dot on first touch
+        tp.addEventListener('touchstart', (e) => {
+            e.preventDefault();
+            tp.classList.add('active');
+            const t = e.changedTouches;
+            for (let i = 0; i < t.length; i++) {
+                touches[t[i].identifier] = { x: t[i].clientX, y: t[i].clientY };
+            }
+            activeFingers = Object.keys(touches).length;
+
+            if (activeFingers === 1) {
+                const ct = e.touches[0];
+                lastTouchX = ct.clientX;
+                lastTouchY = ct.clientY;
+                hasMoved = false;
+                touchStarted = true;
+
+                cursorDot.style.left = ct.clientX + 'px';
+                cursorDot.style.top = ct.clientY + 'px';
+
+                // Get cursor position from server
+                send({ type: 'ping' });
+            }
+        }, { passive: false });
+
+        tp.addEventListener('touchmove', (e) => {
+            e.preventDefault();
+            const t = e.changedTouches;
+            for (let i = 0; i < t.length; i++) {
+                touches[t[i].identifier] = { x: t[i].clientX, y: t[i].clientY };
+            }
+
+            const keys = Object.keys(touches);
+
+            if (keys.length === 1) {
+                // Single finger: move mouse
+                const ct = e.touches[0];
+                const dx = ct.clientX - lastTouchX;
+                const dy = ct.clientY - lastTouchY;
+
+                if (Math.abs(dx) > 1 || Math.abs(dy) > 1) {
+                    hasMoved = true;
+                    send({ type: 'mouse_move', dx: Math.round(dx * 1.5), dy: Math.round(dy * 1.5) });
+                }
+
+                lastTouchX = ct.clientX;
+                lastTouchY = ct.clientY;
+                cursorDot.style.left = ct.clientX + 'px';
+                cursorDot.style.top = ct.clientY + 'px';
+
+            } else if (keys.length >= 2) {
+                // Two fingers: scroll
+                const t0 = touches[keys[0]];
+                const t1 = touches[keys[1]];
+                const dist = Math.hypot(t1.x - t0.x, t1.y - t0.y);
+
+                if (prevPinchDist > 0) {
+                    const delta = dist - prevPinchDist;
+                    if (Math.abs(delta) > 3) {
+                        send({ type: 'mouse_scroll', clicks: Math.round(delta * 0.3) });
+                    }
+                }
+                prevPinchDist = dist;
+
+                // Also track two-finger drag as scroll
+                const avgX = (t0.x + t1.x) / 2;
+                const avgY = (t0.y + t1.y) / 2;
+                if (lastTouchX && lastTouchY) {
+                    const dy = avgY - lastTouchY;
+                    if (Math.abs(dy) > 5) {
+                        send({ type: 'mouse_scroll', clicks: Math.round(-dy * 0.2) });
+                    }
+                }
+                lastTouchX = avgX;
+                lastTouchY = avgY;
+            }
+        }, { passive: false });
+
+        tp.addEventListener('touchend', (e) => {
+            e.preventDefault();
+            for (let i = 0; i < e.changedTouches.length; i++) {
+                delete touches[e.changedTouches[i].identifier];
+            }
+            activeFingers = Object.keys(touches).length;
+            prevPinchDist = 0;
+
+            if (activeFingers === 0) {
+                // Tap detection
+                if (touchStarted && !hasMoved) {
+                    send({ type: 'mouse_click', button: 'left' });
+                }
+                touchStarted = false;
+                tp.classList.remove('active');
+            }
+        }, { passive: false });
+
+        tp.addEventListener('touchcancel', (e) => {
+            touches = {};
+            activeFingers = 0;
+            prevPinchDist = 0;
+            touchStarted = false;
+            tp.classList.remove('active');
+        }, { passive: false });
+
+        // Mouse support (for desktop testing)
+        let mouseDown = false;
+        tp.addEventListener('mousedown', (e) => {
+            mouseDown = true;
+            hasMoved = false;
+            lastTouchX = e.clientX;
+            lastTouchY = e.clientY;
+            tp.classList.add('active');
+        });
+
+        tp.addEventListener('mousemove', (e) => {
+            if (mouseDown) {
+                const dx = e.clientX - lastTouchX;
+                const dy = e.clientY - lastTouchY;
+                if (Math.abs(dx) > 0 || Math.abs(dy) > 0) {
+                    hasMoved = true;
+                    send({ type: 'mouse_move', dx: Math.round(dx * 1.5), dy: Math.round(dy * 1.5) });
+                }
+                lastTouchX = e.clientX;
+                lastTouchY = e.clientY;
+            }
+        });
+
+        tp.addEventListener('mouseup', (e) => {
+            mouseDown = false;
+            if (!hasMoved) {
+                send({ type: 'mouse_click', button: 'left' });
+            }
+            tp.classList.remove('active');
+        });
+
+        tp.addEventListener('mouseleave', () => {
+            mouseDown = false;
+            tp.classList.remove('active');
+        });
+
+        // ─── Click Buttons ───
+        document.getElementById('btnLeft').addEventListener('click', () => send({ type: 'mouse_click', button: 'left' }));
+        document.getElementById('btnRight').addEventListener('click', () => send({ type: 'mouse_right_click' }));
+        document.getElementById('btnDouble').addEventListener('click', () => send({ type: 'mouse_double_click' }));
+
+        let dragActive = false;
+        document.getElementById('btnDrag').addEventListener('click', () => {
+            dragActive = !dragActive;
+            document.getElementById('btnDrag').style.border = dragActive ? '1px solid #f0c27f' : '';
+            send({ type: dragActive ? 'mouse_down' : 'mouse_up', button: 'left' });
+        });
+
+        // ─── Scroll ───
+        document.getElementById('scrollUp').addEventListener('click', () => send({ type: 'mouse_scroll', clicks: 3 }));
+        document.getElementById('scrollDown').addEventListener('click', () => send({ type: 'mouse_scroll', clicks: -3 }));
+
+        // ─── Keyboard ───
+        const kbInput = document.getElementById('kbInput');
+        document.getElementById('kbSend').addEventListener('click', () => {
+            const text = kbInput.value;
+            if (text) {
+                send({ type: 'key_type', text });
+                kbInput.value = '';
+            }
+        });
+        kbInput.addEventListener('keydown', (e) => {
+            if (e.key === 'Enter') {
+                e.preventDefault();
+                document.getElementById('kbSend').click();
+            }
+        });
+
+        // ─── Hotkeys ───
+        document.querySelectorAll('.hotkey').forEach(el => {
+            el.addEventListener('click', () => {
+                const keys = JSON.parse(el.dataset.keys);
+                send({ type: 'hotkey', keys });
+            });
+        });
+
+        // ─── Custom coordinates display ───
+        let coordTimer = null;
+        document.addEventListener('touchmove', () => {
+            clearTimeout(coordTimer);
+            const el = document.getElementById('coords');
+            if (!el.textContent.includes('·')) {
+                el.textContent = el.textContent + ' · Moving...';
+            }
+            coordTimer = setTimeout(() => {
+                const sc = document.getElementById('coords');
+                if (sc.textContent.includes('·')) {
+                    sc.textContent = sc.textContent.split('·')[0].trim();
+                }
+            }, 500);
+        }, { passive: true });
+    </script>
+</body>
+</html>
