@@ -63,6 +63,53 @@
         .status-dot.connected { background: #34d399; box-shadow: 0 0 6px #34d39966; }
         .status-dot.disconnected { background: #ef4444; box-shadow: 0 0 6px #ef444466; }
 
+        /* ── Sensitivity ── */
+        .sensitivity-row {
+            display: flex;
+            align-items: center;
+            gap: 8px;
+            flex-shrink: 0;
+            padding: 2px 4px 6px;
+        }
+
+        .sensitivity-row label {
+            font-size: 0.65rem;
+            color: #666;
+            font-weight: 600;
+            white-space: nowrap;
+        }
+
+        .sensitivity-row input[type="range"] {
+            flex: 1;
+            -webkit-appearance: none;
+            appearance: none;
+            height: 3px;
+            border-radius: 2px;
+            background: #2a2a38;
+            outline: none;
+        }
+
+        .sensitivity-row input[type="range"]::-webkit-slider-thumb {
+            -webkit-appearance: none;
+            appearance: none;
+            width: 16px;
+            height: 16px;
+            border-radius: 50%;
+            background: #f0c27f;
+            cursor: pointer;
+            border: 2px solid #222;
+            box-shadow: 0 0 6px #f0c27f44;
+        }
+
+        .sensitivity-row .sens-value {
+            font-size: 0.7rem;
+            color: #f0c27f;
+            font-weight: 700;
+            min-width: 28px;
+            text-align: right;
+            font-family: 'SF Mono', monospace;
+        }
+
         /* ── Touchpad ── */
         .touchpad-wrapper {
             flex: 1;
@@ -80,6 +127,11 @@
             overflow: hidden;
             touch-action: none;
             cursor: crosshair;
+            transition: border-color 0.15s;
+        }
+
+        .touchpad.active {
+            border-color: #f0c27f55;
         }
 
         .touchpad .hint {
@@ -96,23 +148,37 @@
             gap: 4px;
         }
 
-        .touchpad .hint span { font-size: 1.6rem; }
+        .touchpad .hint .hint-icon { font-size: 1.6rem; }
+        .touchpad .hint .hint-sub { font-size: 0.65rem; color: #333; margin-top: 2px; }
 
         .touchpad.active .hint { opacity: 0; }
 
         .touchpad .cursor-dot {
             position: absolute;
-            width: 12px; height: 12px;
+            width: 10px; height: 10px;
             background: #f0c27f;
             border-radius: 50%;
             opacity: 0;
             transform: translate(-50%, -50%);
             pointer-events: none;
-            transition: opacity 0.15s;
-            box-shadow: 0 0 10px #f0c27f55;
+            transition: opacity 0.1s;
+            box-shadow: 0 0 8px #f0c27f55;
         }
 
         .touchpad.active .cursor-dot { opacity: 1; }
+
+        .touchpad .touch-trail {
+            position: absolute;
+            width: 40px; height: 40px;
+            border-radius: 50%;
+            background: radial-gradient(circle, #f0c27f15 0%, transparent 70%);
+            pointer-events: none;
+            transform: translate(-50%, -50%);
+            opacity: 0;
+            transition: opacity 0.15s;
+        }
+
+        .touchpad.active .touch-trail { opacity: 1; }
 
         /* ── Button Row ── */
         .btn-row {
@@ -318,10 +384,13 @@
             text-align: center;
             font-size: 0.65rem;
             color: #444;
-            padding: 2px 0 4px;
+            padding: 2px 0 2px;
             flex-shrink: 0;
             font-family: 'SF Mono', monospace;
+            transition: color 0.2s;
         }
+
+        .coords.active { color: #f0c27f66; }
     </style>
 </head>
 <body>
@@ -349,19 +418,29 @@
             </div>
         </div>
 
+        <!-- Sensitivity Slider -->
+        <div class="sensitivity-row">
+            <label>🐢 Slow</label>
+            <input type="range" id="sensSlider" min="0.5" max="4.0" step="0.1" value="1.5" />
+            <label>Fast 🐇</label>
+            <span class="sens-value" id="sensValue">1.5×</span>
+        </div>
+
         <!-- Touchpad -->
         <div class="touchpad-wrapper">
             <div class="touchpad" id="touchpad">
                 <div class="hint">
-                    <span>👆</span>
+                    <span class="hint-icon">👆</span>
                     Drag to move · Tap to click
+                    <span class="hint-sub">Two fingers to scroll</span>
                 </div>
+                <div class="touch-trail" id="touchTrail"></div>
                 <div class="cursor-dot" id="cursorDot"></div>
             </div>
         </div>
 
         <!-- Coordinates -->
-        <div class="coords" id="coords">Cursor: ---, ---</div>
+        <div class="coords" id="coords">Screen: --- × ---</div>
 
         <!-- Click Buttons -->
         <div class="btn-row">
@@ -437,7 +516,6 @@
             ws.onopen = () => {
                 statusText.textContent = '✅ Connected!';
                 updateStatus(true);
-                // Get screen size
                 ws.send(JSON.stringify({ type: 'get_screen_size' }));
             };
 
@@ -445,8 +523,10 @@
                 try {
                     const msg = JSON.parse(e.data);
                     if (msg.type === 'screen_size') {
+                        window.screenW = msg.width;
+                        window.screenH = msg.height;
                         document.getElementById('coords').textContent =
-                            `Screen: ${msg.width}×${msg.height}`;
+                            `${msg.width}×${msg.height} · Ready`;
                     }
                 } catch(_) {}
             };
@@ -465,24 +545,50 @@
 
         connect();
 
-        // ─── Send helper ───
+        // ─── Send helper — throttled ───
         function send(data) {
             if (ws && ws.readyState === WebSocket.OPEN) {
                 ws.send(JSON.stringify(data));
             }
         }
 
+        // ─── Throttled movement ───
+        let lastMoveTime = 0;
+        const MOVE_INTERVAL = 30; // ms — ~33 fps, smooth without flooding
+
+        function sendMove(dx, dy) {
+            const now = performance.now();
+            if (now - lastMoveTime >= MOVE_INTERVAL) {
+                lastMoveTime = now;
+                send({ type: 'mouse_move', dx: Math.round(dx), dy: Math.round(dy) });
+                return true;
+            }
+            return false;
+        }
+
+        // ─── Sensitivity ───
+        const sensSlider = document.getElementById('sensSlider');
+        const sensValue = document.getElementById('sensValue');
+        let sensitivity = parseFloat(sensSlider.value);
+
+        sensSlider.addEventListener('input', () => {
+            sensitivity = parseFloat(sensSlider.value);
+            sensValue.textContent = sensitivity.toFixed(1) + '×';
+        });
+
         // ─── Touchpad ───
         const tp = document.getElementById('touchpad');
         const cursorDot = document.getElementById('cursorDot');
+        const touchTrail = document.getElementById('touchTrail');
         let lastTouchX = 0, lastTouchY = 0;
         let hasMoved = false;
         let touches = {};
         let activeFingers = 0;
         let touchStarted = false;
         let prevPinchDist = 0;
+        let accumulatedDx = 0;
+        let accumulatedDy = 0;
 
-        // Show cursor dot on first touch
         tp.addEventListener('touchstart', (e) => {
             e.preventDefault();
             tp.classList.add('active');
@@ -498,12 +604,13 @@
                 lastTouchY = ct.clientY;
                 hasMoved = false;
                 touchStarted = true;
+                accumulatedDx = 0;
+                accumulatedDy = 0;
 
                 cursorDot.style.left = ct.clientX + 'px';
                 cursorDot.style.top = ct.clientY + 'px';
-
-                // Get cursor position from server
-                send({ type: 'ping' });
+                touchTrail.style.left = ct.clientX + 'px';
+                touchTrail.style.top = ct.clientY + 'px';
             }
         }, { passive: false });
 
@@ -517,20 +624,30 @@
             const keys = Object.keys(touches);
 
             if (keys.length === 1) {
-                // Single finger: move mouse
                 const ct = e.touches[0];
-                const dx = ct.clientX - lastTouchX;
-                const dy = ct.clientY - lastTouchY;
+                let dx = ct.clientX - lastTouchX;
+                let dy = ct.clientY - lastTouchY;
 
-                if (Math.abs(dx) > 1 || Math.abs(dy) > 1) {
+                // Accumulate small movements for precision
+                accumulatedDx += dx;
+                accumulatedDy += dy;
+
+                if (Math.abs(accumulatedDx) >= 1 || Math.abs(accumulatedDy) >= 1) {
                     hasMoved = true;
-                    send({ type: 'mouse_move', dx: Math.round(dx * 1.5), dy: Math.round(dy * 1.5) });
+                    const moveDx = accumulatedDx * sensitivity;
+                    const moveDy = accumulatedDy * sensitivity;
+                    if (sendMove(moveDx, moveDy)) {
+                        accumulatedDx = 0;
+                        accumulatedDy = 0;
+                    }
                 }
 
                 lastTouchX = ct.clientX;
                 lastTouchY = ct.clientY;
                 cursorDot.style.left = ct.clientX + 'px';
                 cursorDot.style.top = ct.clientY + 'px';
+                touchTrail.style.left = ct.clientX + 'px';
+                touchTrail.style.top = ct.clientY + 'px';
 
             } else if (keys.length >= 2) {
                 // Two fingers: scroll
@@ -546,10 +663,10 @@
                 }
                 prevPinchDist = dist;
 
-                // Also track two-finger drag as scroll
+                // Two-finger vertical drag = scroll
                 const avgX = (t0.x + t1.x) / 2;
                 const avgY = (t0.y + t1.y) / 2;
-                if (lastTouchX && lastTouchY) {
+                if (lastTouchX || lastTouchY) {
                     const dy = avgY - lastTouchY;
                     if (Math.abs(dy) > 5) {
                         send({ type: 'mouse_scroll', clicks: Math.round(-dy * 0.2) });
@@ -569,21 +686,24 @@
             prevPinchDist = 0;
 
             if (activeFingers === 0) {
-                // Tap detection
                 if (touchStarted && !hasMoved) {
                     send({ type: 'mouse_click', button: 'left' });
                 }
                 touchStarted = false;
                 tp.classList.remove('active');
+                accumulatedDx = 0;
+                accumulatedDy = 0;
             }
         }, { passive: false });
 
-        tp.addEventListener('touchcancel', (e) => {
+        tp.addEventListener('touchcancel', () => {
             touches = {};
             activeFingers = 0;
             prevPinchDist = 0;
             touchStarted = false;
             tp.classList.remove('active');
+            accumulatedDx = 0;
+            accumulatedDy = 0;
         }, { passive: false });
 
         // Mouse support (for desktop testing)
@@ -598,18 +718,18 @@
 
         tp.addEventListener('mousemove', (e) => {
             if (mouseDown) {
-                const dx = e.clientX - lastTouchX;
-                const dy = e.clientY - lastTouchY;
-                if (Math.abs(dx) > 0 || Math.abs(dy) > 0) {
+                const dx = (e.clientX - lastTouchX) * sensitivity;
+                const dy = (e.clientY - lastTouchY) * sensitivity;
+                if (Math.abs(dx) > 0.5 || Math.abs(dy) > 0.5) {
                     hasMoved = true;
-                    send({ type: 'mouse_move', dx: Math.round(dx * 1.5), dy: Math.round(dy * 1.5) });
+                    sendMove(dx, dy);
                 }
                 lastTouchX = e.clientX;
                 lastTouchY = e.clientY;
             }
         });
 
-        tp.addEventListener('mouseup', (e) => {
+        tp.addEventListener('mouseup', () => {
             mouseDown = false;
             if (!hasMoved) {
                 send({ type: 'mouse_click', button: 'left' });
@@ -628,9 +748,11 @@
         document.getElementById('btnDouble').addEventListener('click', () => send({ type: 'mouse_double_click' }));
 
         let dragActive = false;
-        document.getElementById('btnDrag').addEventListener('click', () => {
+        const btnDrag = document.getElementById('btnDrag');
+        btnDrag.addEventListener('click', () => {
             dragActive = !dragActive;
-            document.getElementById('btnDrag').style.border = dragActive ? '1px solid #f0c27f' : '';
+            btnDrag.style.border = dragActive ? '1px solid #f0c27f' : '';
+            btnDrag.style.background = dragActive ? '#f0c27f22' : '';
             send({ type: dragActive ? 'mouse_down' : 'mouse_up', button: 'left' });
         });
 
@@ -662,20 +784,12 @@
             });
         });
 
-        // ─── Custom coordinates display ───
-        let coordTimer = null;
+        // ─── Coordinate display glow on movement ───
+        const coordsEl = document.getElementById('coords');
         document.addEventListener('touchmove', () => {
-            clearTimeout(coordTimer);
-            const el = document.getElementById('coords');
-            if (!el.textContent.includes('·')) {
-                el.textContent = el.textContent + ' · Moving...';
-            }
-            coordTimer = setTimeout(() => {
-                const sc = document.getElementById('coords');
-                if (sc.textContent.includes('·')) {
-                    sc.textContent = sc.textContent.split('·')[0].trim();
-                }
-            }, 500);
+            coordsEl.classList.add('active');
+            clearTimeout(coordsEl._timer);
+            coordsEl._timer = setTimeout(() => coordsEl.classList.remove('active'), 300);
         }, { passive: true });
     </script>
 </body>

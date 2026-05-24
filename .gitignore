@@ -1,0 +1,17 @@
+# Windows reserved filenames that can cause git issues
+nul
+NUL
+Nul
+
+# Generated files
+*.log
+server/remote_control_qr.png
+
+# Python
+__pycache__/
+*.pyc
+*.pyo
+*.egg-info/
+dist/
+build/
+*.spec
