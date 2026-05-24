@@ -96,9 +96,9 @@ async def handle_ws(request):
 
             # ── Mouse ─────────────────────────────────────────────
             if t == "mouse_move":
+                # Use relative MOUSEEVENTF_MOVE — single API call, no GetCursorPos needed
                 dx, dy = data.get("dx", 0), data.get("dy", 0)
-                x, y = get_mouse_pos()
-                move_mouse(x + dx, y + dy)
+                user32.mouse_event(MOUSEEVENTF_MOVE, dx, dy, 0, 0)
 
             elif t == "mouse_to":
                 move_mouse(data["x"], data["y"])
@@ -123,14 +123,12 @@ async def handle_ws(request):
 
             elif t == "mouse_drag":
                 dx, dy = data.get("dx", 0), data.get("dy", 0)
-                x, y = get_mouse_pos()
                 button = data.get("button", "left")
-                # Press down if not already
                 mouse_down(button)
-                # Move in small steps for smooth drag
+                # Use relative movement for smooth drag
                 steps = max(abs(dx), abs(dy)) // 10 + 1
                 for i in range(1, steps + 1):
-                    move_mouse(x + dx * i // steps, y + dy * i // steps)
+                    user32.mouse_event(MOUSEEVENTF_MOVE, dx // steps, dy // steps, 0, 0)
                     time.sleep(0.001)
                 mouse_up(button)
 

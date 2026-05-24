@@ -63,53 +63,6 @@
         .status-dot.connected { background: #34d399; box-shadow: 0 0 6px #34d39966; }
         .status-dot.disconnected { background: #ef4444; box-shadow: 0 0 6px #ef444466; }
 
-        /* ── Sensitivity ── */
-        .sensitivity-row {
-            display: flex;
-            align-items: center;
-            gap: 8px;
-            flex-shrink: 0;
-            padding: 2px 4px 6px;
-        }
-
-        .sensitivity-row label {
-            font-size: 0.65rem;
-            color: #666;
-            font-weight: 600;
-            white-space: nowrap;
-        }
-
-        .sensitivity-row input[type="range"] {
-            flex: 1;
-            -webkit-appearance: none;
-            appearance: none;
-            height: 3px;
-            border-radius: 2px;
-            background: #2a2a38;
-            outline: none;
-        }
-
-        .sensitivity-row input[type="range"]::-webkit-slider-thumb {
-            -webkit-appearance: none;
-            appearance: none;
-            width: 16px;
-            height: 16px;
-            border-radius: 50%;
-            background: #f0c27f;
-            cursor: pointer;
-            border: 2px solid #222;
-            box-shadow: 0 0 6px #f0c27f44;
-        }
-
-        .sensitivity-row .sens-value {
-            font-size: 0.7rem;
-            color: #f0c27f;
-            font-weight: 700;
-            min-width: 28px;
-            text-align: right;
-            font-family: 'SF Mono', monospace;
-        }
-
         /* ── Touchpad ── */
         .touchpad-wrapper {
             flex: 1;
@@ -127,7 +80,7 @@
             overflow: hidden;
             touch-action: none;
             cursor: crosshair;
-            transition: border-color 0.15s;
+            transition: border-color 0.1s;
         }
 
         .touchpad.active {
@@ -143,7 +96,7 @@
             font-size: 0.85rem;
             color: #444;
             pointer-events: none;
-            transition: opacity 0.3s;
+            transition: opacity 0.2s;
             flex-direction: column;
             gap: 4px;
         }
@@ -161,7 +114,6 @@
             opacity: 0;
             transform: translate(-50%, -50%);
             pointer-events: none;
-            transition: opacity 0.1s;
             box-shadow: 0 0 8px #f0c27f55;
         }
 
@@ -171,11 +123,10 @@
             position: absolute;
             width: 40px; height: 40px;
             border-radius: 50%;
-            background: radial-gradient(circle, #f0c27f15 0%, transparent 70%);
+            background: radial-gradient(circle, #f0c27f12 0%, transparent 70%);
             pointer-events: none;
             transform: translate(-50%, -50%);
             opacity: 0;
-            transition: opacity 0.15s;
         }
 
         .touchpad.active .touch-trail { opacity: 1; }
@@ -418,14 +369,6 @@
             </div>
         </div>
 
-        <!-- Sensitivity Slider -->
-        <div class="sensitivity-row">
-            <label>🐢 Slow</label>
-            <input type="range" id="sensSlider" min="0.5" max="4.0" step="0.1" value="1.5" />
-            <label>Fast 🐇</label>
-            <span class="sens-value" id="sensValue">1.5×</span>
-        </div>
-
         <!-- Touchpad -->
         <div class="touchpad-wrapper">
             <div class="touchpad" id="touchpad">
@@ -545,50 +488,55 @@
 
         connect();
 
-        // ─── Send helper — throttled ───
+        // ─── Send helper ───
         function send(data) {
             if (ws && ws.readyState === WebSocket.OPEN) {
                 ws.send(JSON.stringify(data));
             }
         }
 
-        // ─── Throttled movement ───
-        let lastMoveTime = 0;
-        const MOVE_INTERVAL = 30; // ms — ~33 fps, smooth without flooding
-
-        function sendMove(dx, dy) {
-            const now = performance.now();
-            if (now - lastMoveTime >= MOVE_INTERVAL) {
-                lastMoveTime = now;
-                send({ type: 'mouse_move', dx: Math.round(dx), dy: Math.round(dy) });
-                return true;
-            }
-            return false;
-        }
-
-        // ─── Sensitivity ───
-        const sensSlider = document.getElementById('sensSlider');
-        const sensValue = document.getElementById('sensValue');
-        let sensitivity = parseFloat(sensSlider.value);
-
-        sensSlider.addEventListener('input', () => {
-            sensitivity = parseFloat(sensSlider.value);
-            sensValue.textContent = sensitivity.toFixed(1) + '×';
-        });
+        // ─── Sensitivity (fixed — always fast) ───
+        const SENSITIVITY = 3.0;
 
         // ─── Touchpad ───
         const tp = document.getElementById('touchpad');
         const cursorDot = document.getElementById('cursorDot');
         const touchTrail = document.getElementById('touchTrail');
-        let lastTouchX = 0, lastTouchY = 0;
-        let hasMoved = false;
-        let touches = {};
-        let activeFingers = 0;
-        let touchStarted = false;
-        let prevPinchDist = 0;
-        let accumulatedDx = 0;
-        let accumulatedDy = 0;
 
+        // Tracking state
+        let fingerActive = false;
+        let trackX = 0, trackY = 0;       // current finger position (updated by touchmove)
+        let lastSentX = 0, lastSentY = 0; // last position we sent to server
+        let hasMoved = false;
+        let touchStarted = false;
+        let touches = {};
+        let prevPinchDist = 0;
+
+        // ─── rAF-based movement loop ───
+        // Runs at ~60fps, samples the latest finger position and sends the delta.
+        function movementLoop() {
+            if (fingerActive && connected) {
+                // Compute delta from last sent position
+                let dx = trackX - lastSentX;
+                let dy = trackY - lastSentY;
+
+                // Only send if movement is significant
+                if (Math.abs(dx) >= 1 || Math.abs(dy) >= 1) {
+                    hasMoved = true;
+                    send({
+                        type: 'mouse_move',
+                        dx: Math.round(dx * SENSITIVITY),
+                        dy: Math.round(dy * SENSITIVITY)
+                    });
+                    lastSentX = trackX;
+                    lastSentY = trackY;
+                }
+            }
+            requestAnimationFrame(movementLoop);
+        }
+        requestAnimationFrame(movementLoop);
+
+        // ─── Touch events ───
         tp.addEventListener('touchstart', (e) => {
             e.preventDefault();
             tp.classList.add('active');
@@ -596,16 +544,16 @@
             for (let i = 0; i < t.length; i++) {
                 touches[t[i].identifier] = { x: t[i].clientX, y: t[i].clientY };
             }
-            activeFingers = Object.keys(touches).length;
 
-            if (activeFingers === 1) {
+            if (Object.keys(touches).length === 1) {
                 const ct = e.touches[0];
-                lastTouchX = ct.clientX;
-                lastTouchY = ct.clientY;
+                trackX = ct.clientX;
+                trackY = ct.clientY;
+                lastSentX = ct.clientX;
+                lastSentY = ct.clientY;
+                fingerActive = true;
                 hasMoved = false;
                 touchStarted = true;
-                accumulatedDx = 0;
-                accumulatedDy = 0;
 
                 cursorDot.style.left = ct.clientX + 'px';
                 cursorDot.style.top = ct.clientY + 'px';
@@ -625,25 +573,9 @@
 
             if (keys.length === 1) {
                 const ct = e.touches[0];
-                let dx = ct.clientX - lastTouchX;
-                let dy = ct.clientY - lastTouchY;
-
-                // Accumulate small movements for precision
-                accumulatedDx += dx;
-                accumulatedDy += dy;
-
-                if (Math.abs(accumulatedDx) >= 1 || Math.abs(accumulatedDy) >= 1) {
-                    hasMoved = true;
-                    const moveDx = accumulatedDx * sensitivity;
-                    const moveDy = accumulatedDy * sensitivity;
-                    if (sendMove(moveDx, moveDy)) {
-                        accumulatedDx = 0;
-                        accumulatedDy = 0;
-                    }
-                }
-
-                lastTouchX = ct.clientX;
-                lastTouchY = ct.clientY;
+                // Just update the tracking position — the rAF loop sends it
+                trackX = ct.clientX;
+                trackY = ct.clientY;
                 cursorDot.style.left = ct.clientX + 'px';
                 cursorDot.style.top = ct.clientY + 'px';
                 touchTrail.style.left = ct.clientX + 'px';
@@ -651,6 +583,7 @@
 
             } else if (keys.length >= 2) {
                 // Two fingers: scroll
+                fingerActive = false; // pause movement while scrolling
                 const t0 = touches[keys[0]];
                 const t1 = touches[keys[1]];
                 const dist = Math.hypot(t1.x - t0.x, t1.y - t0.y);
@@ -664,16 +597,19 @@
                 prevPinchDist = dist;
 
                 // Two-finger vertical drag = scroll
-                const avgX = (t0.x + t1.x) / 2;
                 const avgY = (t0.y + t1.y) / 2;
-                if (lastTouchX || lastTouchY) {
-                    const dy = avgY - lastTouchY;
+                // Use the first two-finger position as reference
+                if (!trackY || !trackX) {
+                    trackX = (t0.x + t1.x) / 2;
+                    trackY = avgY;
+                } else {
+                    const dy = avgY - trackY;
                     if (Math.abs(dy) > 5) {
                         send({ type: 'mouse_scroll', clicks: Math.round(-dy * 0.2) });
                     }
+                    trackX = (t0.x + t1.x) / 2;
+                    trackY = avgY;
                 }
-                lastTouchX = avgX;
-                lastTouchY = avgY;
             }
         }, { passive: false });
 
@@ -682,28 +618,32 @@
             for (let i = 0; i < e.changedTouches.length; i++) {
                 delete touches[e.changedTouches[i].identifier];
             }
-            activeFingers = Object.keys(touches).length;
             prevPinchDist = 0;
 
-            if (activeFingers === 0) {
+            if (Object.keys(touches).length === 0) {
                 if (touchStarted && !hasMoved) {
                     send({ type: 'mouse_click', button: 'left' });
                 }
+                fingerActive = false;
                 touchStarted = false;
                 tp.classList.remove('active');
-                accumulatedDx = 0;
-                accumulatedDy = 0;
+            } else if (Object.keys(touches).length === 1) {
+                // Switched from 2 fingers to 1 — re-engage movement
+                const remaining = Object.values(touches)[0];
+                trackX = remaining.x;
+                trackY = remaining.y;
+                lastSentX = remaining.x;
+                lastSentY = remaining.y;
+                fingerActive = true;
             }
         }, { passive: false });
 
         tp.addEventListener('touchcancel', () => {
             touches = {};
-            activeFingers = 0;
             prevPinchDist = 0;
+            fingerActive = false;
             touchStarted = false;
             tp.classList.remove('active');
-            accumulatedDx = 0;
-            accumulatedDy = 0;
         }, { passive: false });
 
         // Mouse support (for desktop testing)
@@ -711,26 +651,24 @@
         tp.addEventListener('mousedown', (e) => {
             mouseDown = true;
             hasMoved = false;
-            lastTouchX = e.clientX;
-            lastTouchY = e.clientY;
+            trackX = e.clientX;
+            trackY = e.clientY;
+            lastSentX = e.clientX;
+            lastSentY = e.clientY;
+            fingerActive = true;
             tp.classList.add('active');
         });
 
         tp.addEventListener('mousemove', (e) => {
             if (mouseDown) {
-                const dx = (e.clientX - lastTouchX) * sensitivity;
-                const dy = (e.clientY - lastTouchY) * sensitivity;
-                if (Math.abs(dx) > 0.5 || Math.abs(dy) > 0.5) {
-                    hasMoved = true;
-                    sendMove(dx, dy);
-                }
-                lastTouchX = e.clientX;
-                lastTouchY = e.clientY;
+                trackX = e.clientX;
+                trackY = e.clientY;
             }
         });
 
         tp.addEventListener('mouseup', () => {
             mouseDown = false;
+            fingerActive = false;
             if (!hasMoved) {
                 send({ type: 'mouse_click', button: 'left' });
             }
@@ -739,6 +677,7 @@
 
         tp.addEventListener('mouseleave', () => {
             mouseDown = false;
+            fingerActive = false;
             tp.classList.remove('active');
         });
 
