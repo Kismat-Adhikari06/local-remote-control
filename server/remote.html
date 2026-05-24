@@ -421,13 +421,15 @@
     </div>
 
     <script>
-        // ─── WebSocket Connection ───
+        // ─── WebSocket Connection with mDNS auto-discovery ───
         const WS_PORT = 8765;
         const host = location.hostname;
-        const wsUrl = `ws://${host}:${WS_PORT}/ws`;
+        const MDNS_HOST = 'remote-control.local';
 
         let ws = null;
         let connected = false;
+        let connectMethod = 'mdns'; // 'mdns' or 'ip'
+        let reconnectTimer = null;
 
         const overlay = document.getElementById('overlay');
         const ipDisplay = document.getElementById('ipDisplay');
@@ -437,7 +439,18 @@
         const statusDot = document.getElementById('statusDot');
         const statusLabel = document.getElementById('statusLabel');
 
-        ipDisplay.textContent = wsUrl;
+        // Remember which method worked last time
+        const savedMethod = localStorage.getItem('rc_method');
+        if (savedMethod === 'mdns' || savedMethod === 'ip') {
+            connectMethod = savedMethod;
+        }
+
+        function getWsUrl(method) {
+            const addr = method === 'mdns' ? MDNS_HOST : host;
+            return `ws://${addr}:${WS_PORT}/ws`;
+        }
+
+        ipDisplay.textContent = getWsUrl(connectMethod);
 
         function updateStatus(ok) {
             connected = ok;
@@ -448,16 +461,22 @@
             }
         }
 
-        function connect() {
+        function doConnect(method) {
             if (ws) { try { ws.close(); } catch(e) {} }
+            if (reconnectTimer) { clearTimeout(reconnectTimer); reconnectTimer = null; }
 
+            connectMethod = method;
+            const url = getWsUrl(method);
+            ipDisplay.textContent = url;
             statusText.innerHTML = '<span class="connecting-spinner"></span> Connecting...';
             errorMsg.textContent = '';
 
-            ws = new WebSocket(wsUrl);
+            ws = new WebSocket(url);
 
             ws.onopen = () => {
                 statusText.textContent = '✅ Connected!';
+                // Save which method worked
+                localStorage.setItem('rc_method', method);
                 updateStatus(true);
                 ws.send(JSON.stringify({ type: 'get_screen_size' }));
             };
@@ -477,16 +496,27 @@
             ws.onclose = () => {
                 updateStatus(false);
                 overlay.classList.remove('hidden');
-                statusText.innerHTML = '❌ Disconnected. Retrying...';
-                setTimeout(connect, 2000);
+
+                // mDNS failed — fall back to direct IP
+                if (method === 'mdns') {
+                    statusText.innerHTML = '<span class="connecting-spinner"></span> mDNS unavailable, trying direct IP...';
+                    reconnectTimer = setTimeout(() => doConnect('ip'), 300);
+                } else {
+                    statusText.innerHTML = '❌ Disconnected. Retrying...';
+                    reconnectTimer = setTimeout(() => doConnect('ip'), 2000);
+                }
             };
 
             ws.onerror = () => {
-                errorMsg.textContent = 'Could not connect. Is the server running?';
+                if (method === 'ip') {
+                    // Only show error for IP fallback, not for mDNS trial
+                    errorMsg.textContent = 'Could not connect. Is the server running?';
+                }
             };
         }
 
-        connect();
+        // Start connecting — try saved/preferred method first
+        doConnect(connectMethod);
 
         // ─── Send helper ───
         function send(data) {

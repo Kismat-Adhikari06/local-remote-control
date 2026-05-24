@@ -14,6 +14,19 @@ import ctypes
 from ctypes import wintypes
 
 from aiohttp import web
+from zeroconf import Zeroconf, ServiceInfo, IPVersion
+
+
+# ─── PyInstaller Resource Path ───────────────────────────────────
+def resource_path(relative_path: str) -> str:
+    """Get path to a bundled resource (works in dev and PyInstaller --onefile mode)."""
+    if getattr(sys, 'frozen', False) and hasattr(sys, '_MEIPASS'):
+        return os.path.join(sys._MEIPASS, relative_path)
+    return os.path.join(os.path.dirname(os.path.abspath(__file__)), relative_path)
+
+
+# ─── Constants ──────────────────────────────────────────────────
+PORT = 8765
 
 # ─── Windows API Setup ─────────────────────────────────────────────
 user32 = ctypes.windll.user32
@@ -170,8 +183,7 @@ async def handle_ws(request):
 
 # ─── HTTP: Serve the web UI ───
 async def serve_html(request):
-    html_path = os.path.join(os.path.dirname(os.path.abspath(__file__)), "remote.html")
-    return web.FileResponse(html_path)
+    return web.FileResponse(resource_path("remote.html"))
 
 
 # ─── Network ───
@@ -211,47 +223,123 @@ def get_real_local_ip() -> str:
         return "127.0.0.1"
 
 
-def show_qr(data: str) -> None:
+def show_qr(data: str) -> str:
+    """Generate QR code image and open it. Returns the path to the saved image."""
     import qrcode
+
+    # Save QR to a writable location (the user's temp dir works for both dev and PyInstaller)
+    import tempfile
+    path = os.path.join(tempfile.gettempdir(), "remote_control_qr.png")
 
     qr = qrcode.QRCode(border=2, box_size=10)
     qr.add_data(data)
     img = qr.make_image(fill_color="black", back_color="white")
-    path = os.path.join(os.path.dirname(os.path.abspath(__file__)), "remote_control_qr.png")
     img.save(path)
     print(f"  QR code saved as: {path}")
     try:
         os.startfile(path)
     except Exception:
         pass
+    return path
 
 
-# ─── Main ───
-def main():
-    port = 8765
-    ip = get_local_ip()
+def write_url_file(ip: str, port: int) -> str:
+    """Save a .url shortcut to the desktop for easy access."""
+    try:
+        desktop = os.path.join(os.path.expanduser("~"), "Desktop")
+        url_path = os.path.join(desktop, "Remote Control.url")
+        with open(url_path, "w") as f:
+            f.write(f"[InternetShortcut]\nURL=http://{ip}:{port}\n")
+        return url_path
+    except Exception:
+        return ""
 
+
+# ─── mDNS Service Registration ─────────────────────────────────
+def register_mdns(ip: str, port: int, zc: Zeroconf) -> ServiceInfo:
+    """Register this server on the network via mDNS so phones can find it."""
+    hostname = "remote-control"
+    # Strip any dots from the hostname to keep .local clean
+    server_name = f"{hostname}.local."
+
+    info = ServiceInfo(
+        type_="_remote-control._tcp.local.",
+        name=f"Remote Control Server._remote-control._tcp.local.",
+        server=server_name,
+        addresses=[socket.inet_aton(ip)],
+        port=port,
+        properties={
+            "host": socket.gethostname().encode("utf-8"),
+        },
+    )
+    zc.register_service(info)
+    return info
+
+
+# ─── App Factory ────────────────────────────────────────────────
+def create_app() -> web.Application:
+    """Create and return the web application with routes configured."""
     app = web.Application()
     app.router.add_get("/", serve_html)
     app.router.add_get("/remote.html", serve_html)
     app.router.add_get("/ws", handle_ws)
+    return app
+
+
+def setup_mdns(ip: str, port: int):
+    """Register mDNS service. Returns (zc, mdns_info, mdns_url) or (None, None, None)."""
+    mdns_url = f"http://remote-control.local:{port}"
+    try:
+        zc = Zeroconf(ip_version=IPVersion.V4Only)
+        mdns_info = register_mdns(ip, port, zc)
+        return zc, mdns_info, mdns_url
+    except Exception as e:
+        print(f"  mDNS not available ({e}). QR code still works!")
+        return None, None, mdns_url
+
+
+def cleanup_mdns(zc, mdns_info):
+    """Unregister and close mDNS service."""
+    if zc:
+        try:
+            zc.unregister_service(mdns_info)
+            zc.close()
+        except Exception:
+            pass
+
+
+def qr_path() -> str:
+    """Return the path to the saved QR code image."""
+    import tempfile
+    return os.path.join(tempfile.gettempdir(), "remote_control_qr.png")
+
+
+# ─── CLI Entry Point ────────────────────────────────────────────
+def main():
+    """Run the server in CLI mode (with console output)."""
+    port = 8765
+    ip = get_local_ip()
+
+    zc, mdns_info, mdns_url = setup_mdns(ip, port)
+    app = create_app()
 
     print()
     print("=" * 56)
     print("       *** Remote Control Server ***")
     print("=" * 56)
     print()
-    print(f"  Open on your phone browser:")
-    print(f"      http://{ip}:{port}")
+    print(f"  mDNS active - phone can find you automatically!")
+    print(f"  URL:  {mdns_url}")
+    print(f"  Alt:  http://{ip}:{port}")
     print()
-    print(f"  (Single port — works through firewalls)")
+    print(f"  (mDNS never changes even if your IP does)")
     print()
 
     show_qr(f"http://{ip}:{port}")
 
     print()
-    print(f"  [1] Open http://{ip}:{port} on your phone")
-    print(f"  [2] The page auto-connects")
+    print(f"  [1] Scan QR, or type the URL above in your phone browser")
+    print(f"  [2] Bookmark it — it'll auto-connect next time")
     print(f"  [3] Press Ctrl+C to stop")
     print("=" * 56)
     print()
@@ -259,7 +347,8 @@ def main():
     try:
         web.run_app(app, host="0.0.0.0", port=port, print=lambda *a: None)
     except KeyboardInterrupt:
-        print("\n  Server stopped.\n")
+        cleanup_mdns(zc, mdns_info)
+        print("  Server stopped.\n")
         sys.exit(0)
 
 

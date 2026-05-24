@@ -2,3 +2,6 @@ aiohttp>=3.10
 pyautogui>=0.9.54
 qrcode[pil]>=7.4
 Pillow>=10.0
+zeroconf>=0.136
+pystray>=0.19
+pyinstaller>=6.0

@@ -75,7 +75,18 @@ cd server
 pip install -r requirements.txt
 ```
 
-### 2. Run
+### 2. Run (pick one)
+
+**Option A: Windows App (no terminal needed)**
+
+```bash
+cd server
+python build_app.py         # Build the .exe once
+# Then double-click: dist/RemoteControl.exe
+# Lives in system tray, auto-starts with Windows
+```
+
+**Option B: Terminal (quick start)**
 
 ```bash
 cd server
@@ -111,6 +122,14 @@ server/
 │                      Handles commands via WebSocket
 │                      Uses Win32 API (mouse) + pyautogui (keyboard)
 │
+├── tray_app.py      ← Windows system tray wrapper
+│                      Runs server in background thread
+│                      QR code, URL, auto-start toggle
+│
+├── build_app.py     ← PyInstaller build script
+│                      Produces RemoteControl.exe (20 MB)
+│                      Bundles Python + all deps
+│
 ├── remote.html      ← Mobile web UI
 │                      Touchpad, buttons, keyboard, gestures
 │                      All logic in a single file for simplicity
@@ -145,13 +164,14 @@ A single-file mobile web app. No frameworks, no build step.
 | **v3** | Windows API direct mouse (10x faster), throttling, sensitivity slider, VPN detection fix |
 | **v2** | Migrated to aiohttp — single port for HTTP + WebSocket, no firewall issues |
 | **v1** | Initial version — WebSocket server + web UI on separate ports |
+| **v6** | **Windows App!** — system tray, auto-start, PyInstaller bundling, mDNS auto-discovery |
 
 ---
 
 ## 🔮 Roadmap
 
-- [ ] **mDNS Auto-Discovery** — laptop advertises itself on the network, phone finds it automatically
-- [ ] **Windows System Tray App** — single `.exe` that sits in the tray, auto-starts with Windows
+- [x] **mDNS Auto-Discovery** — laptop advertises itself on the network, phone finds it automatically
+- [x] **Windows System Tray App** — single `.exe` that sits in the tray, auto-starts with Windows
 - [ ] **Media Controls** — Play/Pause, Next/Prev Track, Volume Up/Down, Mute
 - [ ] **Native Mobile App** — Flutter/React Native app, auto-connects, no browser needed
 - [ ] **Multiple Computer Support** — picker UI when multiple laptops are detected
