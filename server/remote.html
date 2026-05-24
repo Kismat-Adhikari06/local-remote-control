@@ -375,7 +375,7 @@
                 <div class="hint">
                     <span class="hint-icon">👆</span>
                     Drag to move · Tap to click
-                    <span class="hint-sub">Two fingers to scroll</span>
+                    <span class="hint-sub">2 fingers to scroll · 3 fingers to switch tabs</span>
                 </div>
                 <div class="touch-trail" id="touchTrail"></div>
                 <div class="cursor-dot" id="cursorDot"></div>
@@ -496,7 +496,7 @@
         }
 
         // ─── Sensitivity (fixed — always fast) ───
-        const SENSITIVITY = 3.0;
+        const SENSITIVITY = 4.0;
 
         // ─── Touchpad ───
         const tp = document.getElementById('touchpad');
@@ -512,15 +512,20 @@
         let touches = {};
         let prevPinchDist = 0;
 
-        // ─── rAF-based movement loop ───
-        // Runs at ~60fps, samples the latest finger position and sends the delta.
-        function movementLoop() {
+        // 3-finger gesture state
+        const SWIPE_THRESHOLD = 40; // px — minimum swipe distance to trigger
+        let gestureActive = false;
+        let gestureStartX = 0, gestureStartY = 0;
+        let gestureSumX = 0, gestureSumY = 0;
+
+        // ─── Movement loop ───
+        // Uses setInterval at 8ms (~125 updates/sec) for lower latency than rAF (60fps).
+        // Samples the latest finger position and sends the delta each tick.
+        function sendMovement() {
             if (fingerActive && connected) {
-                // Compute delta from last sent position
                 let dx = trackX - lastSentX;
                 let dy = trackY - lastSentY;
 
-                // Only send if movement is significant
                 if (Math.abs(dx) >= 1 || Math.abs(dy) >= 1) {
                     hasMoved = true;
                     send({
@@ -532,9 +537,8 @@
                     lastSentY = trackY;
                 }
             }
-            requestAnimationFrame(movementLoop);
         }
-        requestAnimationFrame(movementLoop);
+        setInterval(sendMovement, 8);
 
         // ─── Touch events ───
         tp.addEventListener('touchstart', (e) => {
@@ -545,7 +549,9 @@
                 touches[t[i].identifier] = { x: t[i].clientX, y: t[i].clientY };
             }
 
-            if (Object.keys(touches).length === 1) {
+            const fingerCount = Object.keys(touches).length;
+
+            if (fingerCount === 1) {
                 const ct = e.touches[0];
                 trackX = ct.clientX;
                 trackY = ct.clientY;
@@ -559,6 +565,17 @@
                 cursorDot.style.top = ct.clientY + 'px';
                 touchTrail.style.left = ct.clientX + 'px';
                 touchTrail.style.top = ct.clientY + 'px';
+
+            } else if (fingerCount === 3) {
+                // Start 3-finger gesture tracking
+                const avgX = (e.touches[0].clientX + e.touches[1].clientX + e.touches[2].clientX) / 3;
+                const avgY = (e.touches[0].clientY + e.touches[1].clientY + e.touches[2].clientY) / 3;
+                gestureActive = true;
+                gestureStartX = avgX;
+                gestureStartY = avgY;
+                gestureSumX = 0;
+                gestureSumY = 0;
+                fingerActive = false;
             }
         }, { passive: false });
 
@@ -581,7 +598,14 @@
                 touchTrail.style.left = ct.clientX + 'px';
                 touchTrail.style.top = ct.clientY + 'px';
 
-            } else if (keys.length >= 2) {
+            } else if (keys.length === 3 && gestureActive) {
+                // 3 fingers: track for swipe gesture (don't send during move, detect on release)
+                const avgX = (touches[keys[0]].x + touches[keys[1]].x + touches[keys[2]].x) / 3;
+                const avgY = (touches[keys[0]].y + touches[keys[1]].y + touches[keys[2]].y) / 3;
+                gestureSumX = avgX - gestureStartX;
+                gestureSumY = avgY - gestureStartY;
+
+            } else if (keys.length === 2) {
                 // Two fingers: scroll
                 fingerActive = false; // pause movement while scrolling
                 const t0 = touches[keys[0]];
@@ -620,15 +644,45 @@
             }
             prevPinchDist = 0;
 
-            if (Object.keys(touches).length === 0) {
+            const remainingCount = Object.keys(touches).length;
+
+            if (gestureActive && remainingCount < 3) {
+                // 3-finger gesture ended — detect swipe direction
+                gestureActive = false;
+                const dx = gestureSumX;
+                const dy = gestureSumY;
+                const absDx = Math.abs(dx);
+                const absDy = Math.abs(dy);
+
+                if (absDx >= SWIPE_THRESHOLD || absDy >= SWIPE_THRESHOLD) {
+                    if (absDx > absDy) {
+                        // Horizontal swipe — switch browser tab
+                        if (dx > 0) {
+                            send({ type: 'hotkey', keys: ['ctrl', 'tab'] });           // Next tab
+                        } else {
+                            send({ type: 'hotkey', keys: ['ctrl', 'shift', 'tab'] });   // Prev tab
+                        }
+                    } else {
+                        // Vertical swipe
+                        if (dy > 0) {
+                            send({ type: 'hotkey', keys: ['win', 'd'] });               // Show Desktop
+                        } else {
+                            send({ type: 'hotkey', keys: ['win', 'tab'] });             // Task View
+                        }
+                    }
+                }
+                tp.classList.remove('active');
+            }
+
+            if (remainingCount === 0) {
                 if (touchStarted && !hasMoved) {
                     send({ type: 'mouse_click', button: 'left' });
                 }
                 fingerActive = false;
                 touchStarted = false;
                 tp.classList.remove('active');
-            } else if (Object.keys(touches).length === 1) {
-                // Switched from 2 fingers to 1 — re-engage movement
+            } else if (remainingCount === 1) {
+                // Switched from 2+ fingers to 1 — re-engage movement
                 const remaining = Object.values(touches)[0];
                 trackX = remaining.x;
                 trackY = remaining.y;
@@ -641,6 +695,7 @@
         tp.addEventListener('touchcancel', () => {
             touches = {};
             prevPinchDist = 0;
+            gestureActive = false;
             fingerActive = false;
             touchStarted = false;
             tp.classList.remove('active');
