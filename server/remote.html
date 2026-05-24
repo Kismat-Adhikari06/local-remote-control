@@ -375,7 +375,7 @@
                 <div class="hint">
                     <span class="hint-icon">👆</span>
                     Drag to move · Tap to click
-                    <span class="hint-sub">2 fingers to scroll · 3 fingers to switch tabs</span>
+                    <span class="hint-sub">2 fingers scroll · 3 fingers: swipe windows, tap for search</span>
                 </div>
                 <div class="touch-trail" id="touchTrail"></div>
                 <div class="cursor-dot" id="cursorDot"></div>
@@ -518,27 +518,32 @@
         let gestureStartX = 0, gestureStartY = 0;
         let gestureSumX = 0, gestureSumY = 0;
 
-        // ─── Movement loop ───
-        // Uses setInterval at 8ms (~125 updates/sec) for lower latency than rAF (60fps).
-        // Samples the latest finger position and sends the delta each tick.
-        function sendMovement() {
-            if (fingerActive && connected) {
-                let dx = trackX - lastSentX;
-                let dy = trackY - lastSentY;
+        // ─── Movement: event-driven with throttle ───
+        // Sends movement immediately in the touchmove handler when the finger
+        // position changes (throttled to ~8ms). This is lower-latency than polling
+        // because we don't wait for the next interval tick — movement fires as
+        // soon as the touch position updates.
+        let lastMoveSend = 0;
+        function trySendMove() {
+            const now = performance.now();
+            if (!fingerActive || !connected) return;
+            if (now - lastMoveSend < 8) return; // throttle at ~125 updates/sec
 
-                if (Math.abs(dx) >= 1 || Math.abs(dy) >= 1) {
-                    hasMoved = true;
-                    send({
-                        type: 'mouse_move',
-                        dx: Math.round(dx * SENSITIVITY),
-                        dy: Math.round(dy * SENSITIVITY)
-                    });
-                    lastSentX = trackX;
-                    lastSentY = trackY;
-                }
-            }
+            const dx = trackX - lastSentX;
+            const dy = trackY - lastSentY;
+
+            if (Math.abs(dx) < 1 && Math.abs(dy) < 1) return;
+
+            hasMoved = true;
+            lastMoveSend = now;
+            send({
+                type: 'mouse_move',
+                dx: Math.round(dx * SENSITIVITY),
+                dy: Math.round(dy * SENSITIVITY)
+            });
+            lastSentX = trackX;
+            lastSentY = trackY;
         }
-        setInterval(sendMovement, 8);
 
         // ─── Touch events ───
         tp.addEventListener('touchstart', (e) => {
@@ -597,6 +602,8 @@
                 cursorDot.style.top = ct.clientY + 'px';
                 touchTrail.style.left = ct.clientX + 'px';
                 touchTrail.style.top = ct.clientY + 'px';
+                // Send movement immediately on touch change (event-driven, not polling)
+                trySendMove();
 
             } else if (keys.length === 3 && gestureActive) {
                 // 3 fingers: track for swipe gesture (don't send during move, detect on release)
@@ -646,34 +653,41 @@
 
             const remainingCount = Object.keys(touches).length;
 
-            if (gestureActive && remainingCount < 3) {
-                // 3-finger gesture ended — detect swipe direction
+            // ── 3-finger gesture detection (swipe or tap) ──
+            if (gestureActive) {
                 gestureActive = false;
-                const dx = gestureSumX;
-                const dy = gestureSumY;
-                const absDx = Math.abs(dx);
-                const absDy = Math.abs(dy);
+                const absDx = Math.abs(gestureSumX);
+                const absDy = Math.abs(gestureSumY);
 
                 if (absDx >= SWIPE_THRESHOLD || absDy >= SWIPE_THRESHOLD) {
+                    // 3-finger SWIPE detected
                     if (absDx > absDy) {
-                        // Horizontal swipe — switch browser tab
-                        if (dx > 0) {
-                            send({ type: 'hotkey', keys: ['ctrl', 'tab'] });           // Next tab
+                        // Horizontal — switch windows
+                        if (gestureSumX > 0) {
+                            send({ type: 'hotkey', keys: ['alt', 'tab'] });           // Next window
                         } else {
-                            send({ type: 'hotkey', keys: ['ctrl', 'shift', 'tab'] });   // Prev tab
+                            send({ type: 'hotkey', keys: ['alt', 'shift', 'tab'] });  // Prev window
                         }
                     } else {
-                        // Vertical swipe
-                        if (dy > 0) {
-                            send({ type: 'hotkey', keys: ['win', 'd'] });               // Show Desktop
+                        // Vertical
+                        if (gestureSumY < 0) {
+                            send({ type: 'hotkey', keys: ['win', 'tab'] });           // Swipe up → Task View
                         } else {
-                            send({ type: 'hotkey', keys: ['win', 'tab'] });             // Task View
+                            send({ type: 'hotkey', keys: ['win', 'd'] });             // Swipe down → Show Desktop
                         }
                     }
+                } else if (remainingCount === 0) {
+                    // 3-finger TAP (no movement, all fingers lifted)
+                    send({ type: 'hotkey', keys: ['win', 's'] });                     // Windows Search
                 }
+
+                // Reset all touch tracking to prevent unwanted 1-finger tap
+                touchStarted = false;
+                hasMoved = false;
                 tp.classList.remove('active');
             }
 
+            // ── 1-finger tap or re-engagement ──
             if (remainingCount === 0) {
                 if (touchStarted && !hasMoved) {
                     send({ type: 'mouse_click', button: 'left' });
@@ -718,6 +732,7 @@
             if (mouseDown) {
                 trackX = e.clientX;
                 trackY = e.clientY;
+                trySendMove();
             }
         });
 
